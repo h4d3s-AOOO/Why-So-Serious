@@ -20,3 +20,5 @@ educational/
 *.user
 
 .vscode
+
+.vs

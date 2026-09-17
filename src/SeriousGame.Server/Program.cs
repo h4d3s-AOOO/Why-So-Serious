@@ -20,6 +20,8 @@ builder.Services.AddScoped<PlayerService>();
 builder.Services.AddScoped<ILobbyFlowService, LobbyFlowService>();
 builder.Services.AddScoped<TenderCatalogService>();
 
+builder.Services.AddScoped<ITurnService, TurnService>();
+
 WebApplication app = builder.Build();
 
 // Configuration du pipeline de requêtes HTTP.

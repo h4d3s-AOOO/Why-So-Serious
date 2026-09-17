@@ -1,39 +1,114 @@
 using Microsoft.AspNetCore.SignalR;
-using Server.Domain;
+using Server.Application;
+using Server.Application.Abstractions;
 using Server.Application.Services;
+using Server.Domain;
+using Server.Domain.Enums;
+using Shared.Abstractions;
+using Shared.Models.Requests;
 
 namespace Server.Hubs;
 
-public class GameHub : Hub
+public class GameHub : Hub<IGameHubClient>, IGameHubServer
 {
     private readonly GameService _gameService;
     private readonly PlayerService _playerService;
+    private readonly ITurnService _turnService;
 
-    public GameHub(GameService gameService, PlayerService playerService)
+    public GameHub(GameService gameService, PlayerService playerService, ITurnService turnService)
     {
         _gameService = gameService;
         _playerService = playerService;
+        _turnService = turnService;
     }
 
-    // Rejoindre une salle ; on ajoute le client au groupe SignalR correspondant
-    public async Task<bool> JoinGame(string gameId, Player player)
+    public async Task SubmitApplicationAsync(ApplyToTenderCommand command)
     {
-        var joined = _gameService.JoinGame(gameId, player);
-        if (!joined) return false;
+        var game = _gameService.GetGame(command.GameId);
+        if (game is null) return;
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
+        var currentRound = game.Rounds.LastOrDefault();
+        if (currentRound is null || currentRound.IsCompleted) return;
 
-        // Notifier les membres du groupe que le joueur a rejoint
-        await Clients.Group(gameId).SendAsync("PlayerJoined", player.Nickname);
+        var company = game.Companies.FirstOrDefault(c => c.Id == command.CompanyId);
+        var tender = currentRound.Tenders.FirstOrDefault(t => t.Id == command.TenderId);
+        if (company is null || tender is null) return;
 
-        // Mettre aussi à jour le lobby (liste des games) pour tous
-        await Clients.All.SendAsync("ReceiveGames", _gameService.GetGamesNotStarted());
-        return true;
+        var assignedConsultants = company.Staff
+            .Where(c => command.ConsultantIds.Contains(c.Id))
+            .ToList();
+
+        var application = new TenderApplication
+        {
+            Round = currentRound,
+            Company = company,
+            Tender = tender,
+            AssignedConsultants = assignedConsultants,
+            Status = ApplicationStatus.Pending
+        };
+
+        currentRound.Applications.Add(application);
+        await Clients.Caller.WaitingForOtherPlayers();
     }
 
-    // Exemple : envoi de message de chat à la salle
-    public async Task SendMessageToPlayerInDaGame(string gameId, string fromNickname, string message)
+    public async Task EnrollConsultantAsync(EnrollTrainingCommand command)
     {
-        await Clients.Group(gameId).SendAsync("ReceiveMessage", fromNickname, message);
+        var game = _gameService.GetGame(command.GameId);
+        if (game is null) return;
+
+        var currentRound = game.Rounds.LastOrDefault();
+        if (currentRound is null || currentRound.IsCompleted) return;
+
+        var company = game.Companies.FirstOrDefault(c => c.Id == command.CompanyId);
+        var training = currentRound.Trainings.FirstOrDefault(t => t.Id == command.TrainingId);
+        if (company is null || training is null) return;
+
+        var consultant = company.Staff.FirstOrDefault(c => c.Id == command.ConsultantId);
+        if (consultant is null) return;
+
+        company.Withdraw(training.Cost);
+
+        var enrollment = new TrainingEnrollment
+        {
+            Company = company,
+            Consultant = consultant,
+            Training = training,
+            RemainingRounds = training.RoundsNumber,
+            Status = EnrollmentStatus.InProgress
+        };
+
+        company.TrainingEnrollments.Add(enrollment);
+    }
+
+    public async Task ReadyForNextRoundAsync(EndTurnCommand command)
+    {
+        var game = _gameService.GetGame(command.GameId);
+        if (game is null) return;
+
+        var currentRound = game.Rounds.LastOrDefault();
+        if (currentRound is null || currentRound.IsCompleted) return;
+
+        // Arbitrage du tour en cours
+        _turnService.ResolveRound(currentRound);
+
+        // Clôture définitive si le nombre max de rounds est atteint
+        if (currentRound.Order >= game.RoundsNumber)
+        {
+            game.IsInProgress = false;
+            var rankings = game.Companies
+                .OrderByDescending(c => c.Treasury)
+                .Select(Mapper.ToDto)
+                .ToList();
+
+            await Clients.Group(game.Id).GameOver(rankings);
+            return;
+        }
+
+        // Notification du résultat à chaque entreprise du groupe
+        foreach (var company in game.Companies)
+        {
+            var catalogDto = Mapper.ToDto(currentRound, company, game.RoundsNumber);
+            await Clients.Group(game.Id).RoundResolved(catalogDto);
+        }
     }
 }

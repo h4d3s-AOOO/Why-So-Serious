@@ -79,4 +79,19 @@ public class GameServiceTests
         Assert.Equal(5, game.MaximumPlayers);
         Assert.Equal(10, game.RoundsNumber);
     }
+
+    [Fact]
+    public void EnrollCompanies_CreatesOneCompanyPerPlayer()
+    {
+        var service = BuildService(new GameOptions { MaximumPlayers = 4 });
+        var game = service.CreateGame("Test", MakePlayer("owner"));
+        service.JoinGame(game.Id, MakePlayer("p2"));
+
+        service.EnrollCompanies(game);
+
+        Assert.Equal(2, game.Companies.Count);
+        Assert.Contains(game.Companies, c => c.PlayerOwner.Id == "owner");
+        Assert.Contains(game.Companies, c => c.PlayerOwner.Id == "p2");
+    }
 }
+

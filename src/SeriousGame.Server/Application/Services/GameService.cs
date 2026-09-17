@@ -41,6 +41,18 @@ public class GameService
         return true;
     }
 
+    public void EnrollCompanies(Game game)
+    {
+        foreach (var enrolledPlayer in game.Players)
+        {
+            game.Companies.Add(new Company
+            {
+                Name = $"{enrolledPlayer.Nickname} & Co",
+                PlayerOwner = enrolledPlayer
+            });
+        }
+    }
+
     public bool DisconnectPlayer(string gameId, Player player)
     {
         var game = _gameRepository.GetAll().FirstOrDefault(r => r.Id == gameId);

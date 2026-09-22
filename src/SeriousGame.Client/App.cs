@@ -56,6 +56,7 @@ public class App
         _gameServices.RoundStarted += catalog =>
         {
             ConsoleUI.DisplayTenders(catalog.AvailableTenders);
+            ConsoleUI.DisplayTrainings(catalog.AvailableTrainings);
         };
 
         _lobbyServices.NotificationReceived += msg =>

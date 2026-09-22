@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using Server.Application;
 using Server.Application.Abstractions;
 using Server.Application.Services;
@@ -14,6 +15,7 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
     private readonly GameService _gameService;
     private readonly PlayerService _playerService;
     private readonly ITurnService _turnService;
+    private readonly ILogger<GameHub> _logger;
 
     public GameHub(GameService gameService, PlayerService playerService, ITurnService turnService)
     {
@@ -110,5 +112,29 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
             var catalogDto = Mapper.ToDto(currentRound, company, game.RoundsNumber);
             await Clients.Group(game.Id).RoundResolved(catalogDto);
         }
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        var httpContext = Context.GetHttpContext();
+        var gameId = httpContext?.Request.Query["gameId"].ToString();
+        var playerId = httpContext?.Request.Query["playerId"].ToString();
+
+        if (!string.IsNullOrEmpty(gameId) && !string.IsNullOrEmpty(playerId))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
+
+            var game = _gameService.GetGame(gameId);
+            var company = game?.Companies.FirstOrDefault(c => c.PlayerOwner.Id == playerId);
+            var round = game?.Rounds.LastOrDefault();
+
+            if (game is not null && company is not null && round is not null)
+            {
+                var catalog = Mapper.ToDto(round, company, game.RoundsNumber);
+                await Clients.Caller.RoundStarted(catalog);
+            }
+        }
+
+        await base.OnConnectedAsync();
     }
 }

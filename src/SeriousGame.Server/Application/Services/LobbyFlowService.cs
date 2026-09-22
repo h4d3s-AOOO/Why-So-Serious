@@ -16,15 +16,18 @@ public class LobbyFlowService : ILobbyFlowService
 {
     private readonly GameService _gameService;
     private readonly PlayerService _playerService;
+    private readonly TenderCatalogService _tenderCatalogService;
     private readonly IHubContext<LobbyHub, ILobbyHubClient> _hub;
 
     public LobbyFlowService(
         GameService gameService,
         PlayerService playerService,
+        TenderCatalogService tenderCatalogService,
         IHubContext<LobbyHub, ILobbyHubClient> hubContext)
     {
         _gameService = gameService;
         _playerService = playerService;
+        _tenderCatalogService = tenderCatalogService;
         _hub = hubContext;
     }
 
@@ -74,6 +77,8 @@ public class LobbyFlowService : ILobbyFlowService
         }
 
         game.IsInProgress = true;
+        _gameService.EnrollCompanies(game);
+        _tenderCatalogService.OpenFirstRound(game);
 
         var startingDto = Mapper.ToDto(game);
 

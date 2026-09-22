@@ -18,6 +18,7 @@ builder.Services.AddSingleton<IPlayerRepository, InMemoryPlayerRepository>();
 builder.Services.AddScoped<GameService>();
 builder.Services.AddScoped<PlayerService>();
 builder.Services.AddScoped<ILobbyFlowService, LobbyFlowService>();
+builder.Services.AddScoped<TenderCatalogService>();
 
 builder.Services.AddScoped<ITurnService, TurnService>();
 

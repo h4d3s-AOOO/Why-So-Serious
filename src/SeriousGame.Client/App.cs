@@ -26,11 +26,13 @@ public class App
     // Garde d'affichage : les broadcasts WaitingForPlayers ne doivent rafraîchir l'écran
     // que pendant la phase d'attente, pas écraser le menu pendant la navigation.
     private bool _isWaitingForGameStart;
+    private readonly IGameServices _gameServices;
 
-    public App(ILogger<App> logger, ILobbyServices lobbyServices, ClientSession session)
+    public App(ILogger<App> logger, ILobbyServices lobbyServices, IGameServices gameServices, ClientSession session)
     {
         _logger = logger;
         _lobbyServices = lobbyServices;
+        _gameServices = gameServices;
         _session = session;
         _waitingAnim = new ConsoleAnimator(ClientResources.WaitingAnimationLabel, Bounce, 200);
 
@@ -49,6 +51,11 @@ public class App
         {
             _waitingAnim.Stop();
             ConsoleUI.WriteInfo(string.Format(ClientResources.GameStartingMessage, game.Name));
+        };
+
+        _gameServices.RoundStarted += catalog =>
+        {
+            ConsoleUI.DisplayTenders(catalog.AvailableTenders);
         };
 
         _lobbyServices.NotificationReceived += msg =>
@@ -201,10 +208,12 @@ public class App
                 }
                 else
                 {
+                    await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
                     await new GameLoop(_session).RunAsync();
                 }
                 break;
             case EnrollmentResult.GameStarting:
+                await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
                 await new GameLoop(_session).RunAsync();
                 break;
         }
@@ -256,4 +265,6 @@ public class App
 
         return await waitTask;
     }
+
+
 }

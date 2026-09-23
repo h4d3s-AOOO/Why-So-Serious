@@ -55,6 +55,7 @@ public class App
 
         _gameServices.RoundStarted += catalog =>
         {
+            ConsoleUI.DisplayCompanyDashboard(catalog.PlayerCompany, catalog.RoundNumber, catalog.TotalRounds);
             ConsoleUI.DisplayTenders(catalog.AvailableTenders);
             ConsoleUI.DisplayTrainings(catalog.AvailableTrainings);
         };

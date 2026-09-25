@@ -1,17 +1,19 @@
 using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Client.Services.Interfaces;
 
-// Contrat placeholder pour la future logique client du hub /game - vide tant que les actions en jeu
-// (tours, appels d'offres, formations) ne sont pas implémentées. Reflète GameServices.
+// Contrat pour la logique client du hub /game. Reflète GameServices.
 public interface IGameServices
 {
     event Action<RoundCatalogDto>? RoundStarted;
+    event Action? WaitingForOtherPlayers;
+
     Task<bool> ConnectAsync(string gameId);
 
     /// <summary>
-    /// Envoie la candidature du joueur à un appel d'offre, avec son prix.
+    /// Envoie une candidature (appel d'offre, consultants affectés, prix).
     /// Retourne null si le serveur l'a acceptée, sinon le message d'erreur à afficher.
     /// </summary>
-    Task<string?> SubmitApplicationAsync(string companyId, string tenderId, decimal bid);
+    Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command);
 }

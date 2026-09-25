@@ -4,13 +4,15 @@ using Client.Services.Interfaces;
 using Client.State;
 using Client.UI;
 using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Client.Game;
 
 /// <summary>
 /// Boucle de partie côté client : parcourt les tours et, pour chacun, les phases de TurnPhase.
 /// Les phases implémentées (analyse, décision, envoi) utilisent le catalogue du tour reçu du
-/// serveur ; les autres affichent encore un placeholder.
+/// serveur ; les autres affichent encore un placeholder. Toute la saisie console passe ici,
+/// sur le thread principal.
 /// </summary>
 public class GameLoop
 {
@@ -19,8 +21,9 @@ public class GameLoop
     private readonly ClientSession _session;
     private readonly IGameServices _gameServices;
 
-    // Choix fait en phase Decision, envoyé en phase Submission
+    // Choix faits en phase Decision, envoyés en phase Submission
     private TenderDto? _chosenTender;
+    private List<string> _chosenConsultantIds = [];
     private decimal _chosenBid;
 
     public GameLoop(ClientSession session, IGameServices gameServices)
@@ -65,11 +68,13 @@ public class GameLoop
         switch (phase)
         {
             case TurnPhase.MarketAnalysis:
+                ConsoleUI.DisplayCompanyDashboard(catalog.PlayerCompany, catalog.RoundNumber, catalog.TotalRounds);
                 ConsoleUI.DisplayTenders(catalog.AvailableTenders);
+                ConsoleUI.DisplayTrainings(catalog.AvailableTrainings);
                 return true;
 
             case TurnPhase.Decision:
-                ChooseTenderAndBid(catalog.AvailableTenders);
+                ChooseApplication(catalog);
                 return true;
 
             case TurnPhase.Submission when _chosenTender is not null:
@@ -81,24 +86,72 @@ public class GameLoop
         }
     }
 
-    // --- Phase Decision : choisir un appel d'offre et un prix ---
+    // --- Phase Decision : appel d'offre, consultants affectés, prix ---
 
-    private void ChooseTenderAndBid(IReadOnlyList<TenderDto> tenders)
+    private void ChooseApplication(RoundCatalogDto catalog)
     {
+        _chosenTender = null;
+        var tenders = catalog.AvailableTenders;
+        var staff = catalog.PlayerCompany.Staff;
+
+        if (tenders.Count == 0)
+        {
+            ConsoleUI.WriteInfo("Aucun appel d'offres ce tour-ci.");
+            return;
+        }
+        if (staff.Count == 0)
+        {
+            ConsoleUI.WriteError("Aucun consultant dans votre entreprise : candidature impossible ce tour-ci.");
+            return;
+        }
+
         ConsoleUI.DisplayTenders(tenders);
-        _chosenTender = tenders[AskTenderIndex(tenders.Count)];
-        _chosenBid = AskBid(_chosenTender);
-        ConsoleUI.WriteInfo($"Votre choix : {_chosenTender.Name} pour {_chosenBid:N0} €");
+        var tenderIndex = AskTenderIndex(tenders.Count);
+        if (tenderIndex < 0)
+        {
+            ConsoleUI.WriteInfo("Vous ne candidatez pas ce tour-ci.");
+            return;
+        }
+
+        var tender = tenders[tenderIndex];
+        _chosenConsultantIds = AskConsultants(staff);
+        _chosenBid = AskBid(tender);
+        _chosenTender = tender;
+
+        ConsoleUI.WriteInfo($"Votre choix : {tender.Name}, {_chosenConsultantIds.Count} consultant(s), {_chosenBid:N0} €");
     }
 
+    /// <summary>Retourne l'index choisi, ou -1 si le joueur passe son tour (0).</summary>
     private static int AskTenderIndex(int count)
     {
         while (true)
         {
-            ConsoleUI.WritePrompt($"Numéro de l'appel d'offre (1-{count}) :");
-            if (int.TryParse(Console.ReadLine(), out var number) && number >= 1 && number <= count)
+            ConsoleUI.WritePrompt($"Numéro de l'appel d'offres (1-{count}, 0 pour passer) :");
+            if (int.TryParse(Console.ReadLine(), out var number) && number >= 0 && number <= count)
                 return number - 1;
             ConsoleUI.WriteError("Numéro invalide.");
+        }
+    }
+
+    private static List<string> AskConsultants(IReadOnlyList<ConsultantDto> staff)
+    {
+        ConsoleUI.WriteInfo("\nConsultants du staff :");
+        for (var i = 0; i < staff.Count; i++)
+            Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
+
+        while (true)
+        {
+            ConsoleUI.WritePrompt("Numéros des consultants à affecter (séparés par des virgules, ex. 1,2) :");
+            var ids = (Console.ReadLine() ?? string.Empty)
+                .Split(',')
+                .Select(entry => int.TryParse(entry.Trim(), out var n) ? n : 0)
+                .Where(n => n >= 1 && n <= staff.Count)
+                .Distinct()
+                .Select(n => staff[n - 1].Id)
+                .ToList();
+
+            if (ids.Count > 0) return ids;
+            ConsoleUI.WriteError("Choisissez au moins un consultant.");
         }
     }
 
@@ -106,27 +159,36 @@ public class GameLoop
     {
         while (true)
         {
-            ConsoleUI.WritePrompt($"Votre prix en € (budget annoncé : {tender.Budget:N0} €) :");
+            ConsoleUI.WritePrompt($"Votre prix en € pour « {tender.Name} » :");
             if (TryParseAmount(Console.ReadLine(), out var bid))
                 return bid;
             ConsoleUI.WriteError("Montant non reconnu, tapez un nombre (ex : 120000).");
         }
     }
 
-    // --- Phase Submission : envoyer la candidature au serveur ---
+    // --- Phase Submission : envoi au serveur ---
 
     private async Task SubmitApplicationAsync(string companyId)
     {
         while (true)
         {
-            var error = await _gameServices.SubmitApplicationAsync(companyId, _chosenTender!.Id, _chosenBid);
+            var command = new ApplyToTenderCommand
+            {
+                GameId = _session.CurrentGame!.Id,
+                CompanyId = companyId,
+                TenderId = _chosenTender!.Id,
+                ConsultantIds = _chosenConsultantIds,
+                Bid = _chosenBid
+            };
+
+            var error = await _gameServices.SubmitApplicationAsync(command);
             if (error is null)
             {
                 ConsoleUI.WriteInfo($"✅ Candidature envoyée : {_chosenTender.Name} pour {_chosenBid:N0} €");
                 return;
             }
 
-            // Refus du serveur (ex : prix invalide) : on laisse le joueur corriger ou renoncer
+            // Refus du serveur (ex : prix invalide) : le joueur corrige ou renonce
             ConsoleUI.WriteError(error);
             ConsoleUI.WritePrompt("Nouveau prix, ou Entrée pour ne pas candidater ce tour-ci :");
             var input = Console.ReadLine();

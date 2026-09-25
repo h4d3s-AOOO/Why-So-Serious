@@ -24,6 +24,7 @@ public class GameServices : IGameServices
     private HubConnection? _gameConnection;
 
     public event Action<RoundCatalogDto>? RoundStarted;
+    public event Action? WaitingForOtherPlayers;
 
     public GameServices(IOptions<WebSocketServerOptions> webSocketServerOptions, ILogger<GameServices> logger, ClientSession session)
     {
@@ -45,6 +46,11 @@ public class GameServices : IGameServices
                 RoundStarted?.Invoke(catalog);
             });
 
+            _gameConnection.On(nameof(IGameHubClient.WaitingForOtherPlayers), () =>
+            {
+                WaitingForOtherPlayers?.Invoke();
+            });
+
             await _gameConnection.StartAsync();
             return true;
         }
@@ -55,19 +61,10 @@ public class GameServices : IGameServices
         }
     }
 
-    public async Task<string?> SubmitApplicationAsync(string companyId, string tenderId, decimal bid)
+    public async Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command)
     {
         if (_gameConnection is null)
             return "Vous n'êtes pas connecté à la partie.";
-
-        var command = new ApplyToTenderCommand
-        {
-            GameId = _session.CurrentGame!.Id,
-            CompanyId = companyId,
-            TenderId = tenderId,
-            ConsultantIds = [],      // le choix des consultants viendra avec US-06
-            Bid = bid
-        };
 
         try
         {

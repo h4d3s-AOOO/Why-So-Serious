@@ -5,6 +5,8 @@ using Client.Services.Interfaces;
 using Client.State;
 using Client.UI;
 using Microsoft.Extensions.Logging;
+using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Client;
 
@@ -55,7 +57,14 @@ public class App
 
         _gameServices.RoundStarted += catalog =>
         {
+            // Thread SignalR : on mémorise seulement. L'affichage et la saisie
+            // se font dans GameLoop, sur le thread principal.
             _session.StartRound(catalog);
+        };
+
+        _gameServices.WaitingForOtherPlayers += () =>
+        {
+            ConsoleUI.WriteInfo("En attente des autres joueurs...");
         };
 
         _lobbyServices.NotificationReceived += msg =>
@@ -236,6 +245,54 @@ public class App
         ConsoleUI.WriteHeader(string.Format(ClientResources.WaitingForGameHeader, gameName));
         ConsoleUI.WritePrompt(string.Format(ClientResources.PlayersWaitingPrompt, playerNames.Count, minimumPlayers, string.Join(", ", playerNames)));
         _waitingAnim.Start();
+    }
+
+    /// <summary>
+    /// Propose de postuler à l'un des tenders du round en cours et, le cas échéant, d'affecter
+    /// des consultants du staff à la candidature avant de l'envoyer au serveur.
+    /// </summary>
+    private async Task ApplyToTenderFlowAsync(RoundCatalogDto catalog)
+    {
+        if (catalog.AvailableTenders.Count == 0) return;
+
+        ConsoleUI.WritePrompt("\nNuméro de l'appel d'offres auquel postuler (0 pour passer) : ");
+        if (!int.TryParse(Console.ReadLine(), out var tenderIndex) || tenderIndex <= 0 || tenderIndex > catalog.AvailableTenders.Count)
+            return;
+
+        var selectedTender = catalog.AvailableTenders[tenderIndex - 1];
+        var staff = catalog.PlayerCompany.Staff;
+
+        if (staff.Count == 0)
+        {
+            ConsoleUI.WriteError("Aucun consultant disponible pour cette candidature.");
+            return;
+        }
+
+        ConsoleUI.WriteInfo("\nConsultants du staff :");
+        for (var i = 0; i < staff.Count; i++)
+            Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
+
+        ConsoleUI.WritePrompt("Numéros des consultants à affecter (séparés par des virgules, ex. 1,2) : ");
+        var input = Console.ReadLine() ?? string.Empty;
+        var selectedIds = new List<string>();
+
+        foreach (var entry in input.Split(','))
+        {
+            if (int.TryParse(entry.Trim(), out var consultantIndex) && consultantIndex > 0 && consultantIndex <= staff.Count)
+                selectedIds.Add(staff[consultantIndex - 1].Id);
+        }
+
+        if (selectedIds.Count == 0) return;
+
+        await _gameServices.SubmitApplicationAsync(new ApplyToTenderCommand
+        {
+            GameId = _session.CurrentGame!.Id,
+            CompanyId = catalog.PlayerCompany.Id,
+            TenderId = selectedTender.Id,
+            ConsultantIds = selectedIds
+        });
+
+        ConsoleUI.WriteInfo($"Candidature envoyée pour « {selectedTender.Name} ».");
     }
 
     private async Task<bool> WaitForGameStartWithEscapeAsync()

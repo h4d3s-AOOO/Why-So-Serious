@@ -7,6 +7,11 @@ namespace Client.Services.Interfaces;
 public interface IGameServices
 {
     event Action<RoundCatalogDto>? RoundStarted;
-
     Task<bool> ConnectAsync(string gameId);
+
+    /// <summary>
+    /// Envoie la candidature du joueur à un appel d'offre, avec son prix.
+    /// Retourne null si le serveur l'a acceptée, sinon le message d'erreur à afficher.
+    /// </summary>
+    Task<string?> SubmitApplicationAsync(string companyId, string tenderId, decimal bid);
 }

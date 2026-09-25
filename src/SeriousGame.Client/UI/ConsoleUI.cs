@@ -53,7 +53,7 @@ public static class ConsoleUI
         WriteInfo($"💰 Treasury : {company.Treasury:N0} €");
 
         Console.ForegroundColor = ConsoleColor.White;
-        Console.WriteLine("\n👥 Team :");
+        Console.WriteLine("\n👥 Staff :");
         for (var i = 0; i < company.Staff.Count; i++)
         {
             var c = company.Staff[i];
@@ -76,13 +76,13 @@ public static class ConsoleUI
 
     public static void DisplayTenders(IReadOnlyList<TenderDto> tenders)
     {
-        WriteHeader("--- AVAILABLE CALLS FOR BIDS ---");
+        WriteHeader("--- AVAILABLE TENDERS---");
         for (var i = 0; i < tenders.Count; i++)
         {
             var t = tenders[i];
             var skills = string.Join(", ", t.RequiredSkills.Select(s => $"{s.Name} ({s.Level})"));
-            Console.WriteLine($"[{i + 1}] {t.Name} | Duration : {t.RoundsDuration} Round(s)");
-            Console.WriteLine($"    Skills Required : {skills}");
+            Console.WriteLine($"[{i + 1}] {t.Name} | Budget : {t.Budget:N0} € | Duration : {t.RoundsDuration} round(s)");
+            Console.WriteLine($"    Required skills : {skills}");
         }
     }
 

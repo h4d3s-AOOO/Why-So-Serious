@@ -14,6 +14,7 @@ public class ClientSession
     public string? Nickname { get; private set; }
     public List<GameDto> Games { get; private set; } = [];
     public GameDto? CurrentGame { get; private set; }
+    public RoundCatalogDto? CurrentRound {  get; private set; }
 
     public void Identify(string nickname)
     {
@@ -56,4 +57,6 @@ public class ClientSession
         if (CurrentGame is null) return;
         CurrentGame.Players.First(p => !updatedGame.Players.Select(player => player.Id).Contains(p.Id)).IsActive = false;
     }
+
+    public void StartRound(RoundCatalogDto catalog) => CurrentRound = catalog;
 }

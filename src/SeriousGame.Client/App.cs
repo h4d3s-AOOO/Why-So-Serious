@@ -55,7 +55,7 @@ public class App
 
         _gameServices.RoundStarted += catalog =>
         {
-            ConsoleUI.DisplayTenders(catalog.AvailableTenders);
+            _session.StartRound(catalog);
         };
 
         _lobbyServices.NotificationReceived += msg =>
@@ -209,12 +209,12 @@ public class App
                 else
                 {
                     await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
-                    await new GameLoop(_session).RunAsync();
+                    await new GameLoop(_session, _gameServices).RunAsync();
                 }
                 break;
             case EnrollmentResult.GameStarting:
                 await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
-                await new GameLoop(_session).RunAsync();
+                await new GameLoop(_session, _gameServices).RunAsync();
                 break;
         }
     }

@@ -63,4 +63,10 @@ public class GameServices : IGameServices
         if (_gameConnection is null) return;
         await _gameConnection.InvokeAsync(nameof(IGameHubServer.SubmitApplicationAsync), command);
     }
+
+    public async Task EnrollConsultantAsync(EnrollTrainingCommand command)
+    {
+        if (_gameConnection is null) return;
+        await _gameConnection.InvokeAsync(nameof(IGameHubServer.EnrollConsultantAsync), command);
+    }
 }

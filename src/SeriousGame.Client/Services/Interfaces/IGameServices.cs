@@ -11,4 +11,5 @@ public interface IGameServices
 
     Task<bool> ConnectAsync(string gameId);
     Task SubmitApplicationAsync(ApplyToTenderCommand command);
+    Task EnrollConsultantAsync(EnrollTrainingCommand command);
 }

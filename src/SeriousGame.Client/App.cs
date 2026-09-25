@@ -62,11 +62,12 @@ public class App
             ConsoleUI.DisplayTrainings(catalog.AvailableTrainings);
 
             await ApplyToTenderFlowAsync(catalog);
+            await EnrollTrainingFlowAsync(catalog);
         };
 
         _gameServices.WaitingForOtherPlayers += () =>
         {
-            ConsoleUI.WriteInfo("En attente des autres joueurs...");
+            ConsoleUI.WriteInfo("Waiting for other players...");
         };
 
         _lobbyServices.NotificationReceived += msg =>
@@ -257,7 +258,7 @@ public class App
     {
         if (catalog.AvailableTenders.Count == 0) return;
 
-        ConsoleUI.WritePrompt("\nNuméro de l'appel d'offres auquel postuler (0 pour passer) : ");
+        ConsoleUI.WritePrompt("\nTender number to apply for (0 to skip): ");
         if (!int.TryParse(Console.ReadLine(), out var tenderIndex) || tenderIndex <= 0 || tenderIndex > catalog.AvailableTenders.Count)
             return;
 
@@ -266,15 +267,15 @@ public class App
 
         if (staff.Count == 0)
         {
-            ConsoleUI.WriteError("Aucun consultant disponible pour cette candidature.");
+            ConsoleUI.WriteError("No consultant available for this application.");
             return;
         }
 
-        ConsoleUI.WriteInfo("\nConsultants du staff :");
+        ConsoleUI.WriteInfo("\nStaff consultants:");
         for (var i = 0; i < staff.Count; i++)
             Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
 
-        ConsoleUI.WritePrompt("Numéros des consultants à affecter (séparés par des virgules, ex. 1,2) : ");
+        ConsoleUI.WritePrompt("Consultant numbers to assign (comma-separated, e.g. 1,2): ");
         var input = Console.ReadLine() ?? string.Empty;
         var selectedIds = new List<string>();
 
@@ -294,7 +295,46 @@ public class App
             ConsultantIds = selectedIds
         });
 
-        ConsoleUI.WriteInfo($"Candidature envoyée pour « {selectedTender.Name} ».");
+        ConsoleUI.WriteInfo($"Application sent for \"{selectedTender.Name}\".");
+    }
+
+    /// <summary>
+    /// Propose d'inscrire un consultant du staff à l'une des formations du round en cours.
+    /// </summary>
+    private async Task EnrollTrainingFlowAsync(RoundCatalogDto catalog)
+    {
+        if (catalog.AvailableTrainings.Count == 0) return;
+
+        ConsoleUI.WritePrompt("\nTraining number to enroll a consultant in (0 to skip): ");
+        if (!int.TryParse(Console.ReadLine(), out var trainingIndex) || trainingIndex <= 0 || trainingIndex > catalog.AvailableTrainings.Count)
+            return;
+
+        var selectedTraining = catalog.AvailableTrainings[trainingIndex - 1];
+        var staff = catalog.PlayerCompany.Staff;
+
+        if (staff.Count == 0)
+        {
+            ConsoleUI.WriteError("No consultant available for this training.");
+            return;
+        }
+
+        ConsoleUI.WriteInfo("\nStaff consultants:");
+        for (var i = 0; i < staff.Count; i++)
+            Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
+
+        ConsoleUI.WritePrompt("Consultant number to enroll (0 to skip): ");
+        if (!int.TryParse(Console.ReadLine(), out var consultantIndex) || consultantIndex <= 0 || consultantIndex > staff.Count)
+            return;
+
+        await _gameServices.EnrollConsultantAsync(new EnrollTrainingCommand
+        {
+            GameId = _session.CurrentGame!.Id,
+            CompanyId = catalog.PlayerCompany.Id,
+            TrainingId = selectedTraining.Id,
+            ConsultantId = staff[consultantIndex - 1].Id
+        });
+
+        ConsoleUI.WriteInfo($"{staff[consultantIndex - 1].FullName} enrolled in \"{selectedTraining.Name}\".");
     }
 
     private async Task<bool> WaitForGameStartWithEscapeAsync()

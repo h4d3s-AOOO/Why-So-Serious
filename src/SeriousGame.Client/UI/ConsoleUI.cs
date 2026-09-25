@@ -64,7 +64,7 @@ public static class ConsoleUI
 
         if (company.ActiveContracts.Count > 0)
         {
-            Console.WriteLine("\n📋 Contrats en cours :");
+            Console.WriteLine("\n📋 Active contract(s) :");
             foreach (var contract in company.ActiveContracts)
             {
                 var assigned = string.Join(", ", contract.AssignedConsultantNames);
@@ -92,7 +92,7 @@ public static class ConsoleUI
         for (var i = 0; i < trainings.Count; i++)
         {
             var tr = trainings[i];
-            Console.WriteLine($"[{i + 1}] {tr.Name} | Cost : {tr.Cost:N0} € | Duration : {tr.RoundsDuration} round(s) | Gain : {tr.ProducedSkill.Name} ({tr.ProducedSkill.Level})");
+            Console.WriteLine($"[{i + 1}] {tr.Name} | Cost : {tr.Cost:N0} € | Duration : {tr.RoundsDuration} Round(s) | Unlocked Skill : {tr.ProducedSkill.Name} ({tr.ProducedSkill.Level})");
         }
     }
 }

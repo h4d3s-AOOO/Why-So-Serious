@@ -55,7 +55,7 @@ public class App
             ConsoleUI.WriteInfo(string.Format(ClientResources.GameStartingMessage, game.Name));
         };
 
-        _gameServices.RoundStarted += async catalog =>
+        _gameServices.RoundStarted += catalog =>
         {
             ConsoleUI.DisplayCompanyDashboard(catalog.PlayerCompany, catalog.RoundNumber, catalog.TotalRounds);
             ConsoleUI.DisplayTenders(catalog.AvailableTenders);
@@ -221,12 +221,12 @@ public class App
                 else
                 {
                     await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
-                    await new GameLoop(_session).RunAsync();
+                    await new GameLoop(_session, _gameServices).RunAsync();
                 }
                 break;
             case EnrollmentResult.GameStarting:
                 await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
-                await new GameLoop(_session).RunAsync();
+                await new GameLoop(_session, _gameServices).RunAsync();
                 break;
         }
     }

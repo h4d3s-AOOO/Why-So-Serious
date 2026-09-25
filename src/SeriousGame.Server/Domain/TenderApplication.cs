@@ -14,4 +14,5 @@ public class TenderApplication : BaseModel
     public required Tender Tender { get; init; }
     public ICollection<Consultant> AssignedConsultants { get; init; } = [];
     public ApplicationStatus Status { get; set; } = ApplicationStatus.Pending;
+    public decimal? Bid { get; init; }
 }

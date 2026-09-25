@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.Logging;
 using Server.Application;
 using Server.Application.Abstractions;
 using Server.Application.Services;
@@ -15,7 +14,6 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
     private readonly GameService _gameService;
     private readonly PlayerService _playerService;
     private readonly ITurnService _turnService;
-    private readonly ILogger<GameHub> _logger;
 
     public GameHub(GameService gameService, PlayerService playerService, ITurnService turnService)
     {
@@ -26,6 +24,9 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
 
     public async Task SubmitApplicationAsync(ApplyToTenderCommand command)
     {
+        if (command.Bid is null or <= 0m)
+            throw new HubException("Bid must be a positive amount.");
+
         var game = _gameService.GetGame(command.GameId);
         if (game is null) return;
 
@@ -46,7 +47,8 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
             Company = company,
             Tender = tender,
             AssignedConsultants = assignedConsultants,
-            Status = ApplicationStatus.Pending
+            Status = ApplicationStatus.Pending,
+            Bid = command.Bid
         };
 
         currentRound.Applications.Add(application);

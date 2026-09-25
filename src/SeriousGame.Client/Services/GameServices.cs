@@ -1,5 +1,5 @@
-// Placeholder pour la future logique client du hub /game (reflète le GameHub côté serveur,
-// lui-même non développé). Pas encore branché dans App - vide tant que les actions en jeu ne sont pas implémentées.
+// Transport hub du hub /game : connexion et envoi des candidatures à un appel d'offres. Reflète
+// GameHub côté serveur (SubmitApplicationAsync y est déjà implémenté).
 using Client.Options;
 using Client.Services.Interfaces;
 using Client.State;
@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Shared;
 using Shared.Abstractions;
 using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Client.Services;
 
@@ -20,6 +21,7 @@ public class GameServices : IGameServices
     private HubConnection? _gameConnection;
 
     public event Action<RoundCatalogDto>? RoundStarted;
+    public event Action? WaitingForOtherPlayers;
 
     public GameServices(IOptions<WebSocketServerOptions> webSocketServerOptions, ILogger<GameServices> logger, ClientSession session)
     {
@@ -41,6 +43,11 @@ public class GameServices : IGameServices
                 RoundStarted?.Invoke(catalog);
             });
 
+            _gameConnection.On(nameof(IGameHubClient.WaitingForOtherPlayers), () =>
+            {
+                WaitingForOtherPlayers?.Invoke();
+            });
+
             await _gameConnection.StartAsync();
             return true;
         }
@@ -49,5 +56,11 @@ public class GameServices : IGameServices
             _logger.LogWarning(ex, "Échec de connexion au hub /game");
             return false;
         }
+    }
+
+    public async Task SubmitApplicationAsync(ApplyToTenderCommand command)
+    {
+        if (_gameConnection is null) return;
+        await _gameConnection.InvokeAsync(nameof(IGameHubServer.SubmitApplicationAsync), command);
     }
 }

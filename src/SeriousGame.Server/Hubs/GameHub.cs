@@ -52,7 +52,6 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
         };
 
         currentRound.Applications.Add(application);
-        await Clients.Caller.WaitingForOtherPlayers();
     }
 
     public async Task EnrollConsultantAsync(EnrollTrainingCommand command)
@@ -133,5 +132,32 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
             var catalogDto = Mapper.ToDto(currentRound, gameCompany, game.RoundsNumber);
             await Clients.Group(gameCompany.PlayerOwner.Id).RoundResolved(catalogDto);
         }
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        var httpContext = Context.GetHttpContext();
+        var gameId = httpContext?.Request.Query["gameId"].ToString();
+        var playerId = httpContext?.Request.Query["playerId"].ToString();
+
+        if (!string.IsNullOrEmpty(gameId) && !string.IsNullOrEmpty(playerId))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
+
+            // US-07 : un groupe par joueur, pour pouvoir lui écrire individuellement
+            await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
+
+            var game = _gameService.GetGame(gameId);
+            var company = game?.Companies.FirstOrDefault(c => c.PlayerOwner.Id == playerId);
+            var round = game?.Rounds.LastOrDefault();
+
+            if (game is not null && company is not null && round is not null)
+            {
+                var catalog = Mapper.ToDto(round, company, game.RoundsNumber);
+                await Clients.Caller.RoundStarted(catalog);
+            }
+        }
+
+        await base.OnConnectedAsync();
     }
 }

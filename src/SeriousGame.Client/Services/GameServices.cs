@@ -13,8 +13,8 @@ using Shared.Models.Requests;
 namespace Client.Services;
 
 /// <summary>
-/// Connexion du client au hub /game : réception du catalogue du tour (RoundStarted)
-/// et envoi des actions du joueur (candidature à un appel d'offre).
+/// Connexion du client au hub /game : réception du catalogue du tour (RoundStarted),
+/// envoi des actions du joueur (candidature, fin de tour) et attente de la résolution du tour.
 /// </summary>
 public class GameServices : IGameServices
 {
@@ -22,6 +22,9 @@ public class GameServices : IGameServices
     private readonly ClientSession _session;
     private readonly string _baseUrl;
     private HubConnection? _gameConnection;
+
+    // Terminée quand le serveur signale la fin du tour (RoundResolved ou GameOver)
+    private TaskCompletionSource? _roundEnd;
 
     public event Action<RoundCatalogDto>? RoundStarted;
     public event Action? WaitingForOtherPlayers;
@@ -49,6 +52,17 @@ public class GameServices : IGameServices
             _gameConnection.On(nameof(IGameHubClient.WaitingForOtherPlayers), () =>
             {
                 WaitingForOtherPlayers?.Invoke();
+            });
+
+            // US-07 : la fin du tour débloque l'attente de EndTurnAsync
+            _gameConnection.On<RoundCatalogDto>(nameof(IGameHubClient.RoundResolved), _ =>
+            {
+                _roundEnd?.TrySetResult();
+            });
+
+            _gameConnection.On<IReadOnlyList<CompanyDto>>(nameof(IGameHubClient.GameOver), _ =>
+            {
+                _roundEnd?.TrySetResult();
             });
 
             await _gameConnection.StartAsync();
@@ -81,5 +95,32 @@ public class GameServices : IGameServices
             _logger.LogWarning(ex, "Échec de l'envoi de la candidature");
             return "Impossible d'envoyer la candidature au serveur.";
         }
+    }
+
+    public async Task EndTurnAsync(string companyId)
+    {
+        if (_gameConnection is null) return;
+
+        // Créée AVANT l'appel : pour le dernier joueur, RoundResolved peut arriver
+        // avant même que InvokeAsync ne rende la main.
+        _roundEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var command = new EndTurnCommand
+        {
+            GameId = _session.CurrentGame!.Id,
+            CompanyId = companyId
+        };
+
+        try
+        {
+            await _gameConnection.InvokeAsync(nameof(IGameHubServer.ReadyForNextRoundAsync), command);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec de la validation du tour");
+            return;   // on n'attend pas une résolution qui ne viendra jamais
+        }
+
+        await _roundEnd.Task;
     }
 }

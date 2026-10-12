@@ -43,13 +43,21 @@ public class GameService
 
     public void EnrollCompanies(Game game)
     {
+        var random = new Random();
+
         foreach (var enrolledPlayer in game.Players)
         {
-            game.Companies.Add(new Company
+            var company = new Company
             {
                 Name = $"{enrolledPlayer.Nickname} & Co",
                 PlayerOwner = enrolledPlayer
-            });
+            };
+
+            // Sans staff de départ, aucune candidature à un tender ni inscription en formation
+            // n'est possible - voir ConsultantFactory.
+            ConsultantFactory.StaffCompany(company, random);
+
+            game.Companies.Add(company);
         }
     }
 

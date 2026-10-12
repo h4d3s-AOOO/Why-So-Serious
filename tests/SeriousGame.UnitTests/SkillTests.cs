@@ -12,7 +12,7 @@ public class SkillTests
 
         skill.LevelUp();
 
-        Assert.Equal(Level.Basic, skill.Level);
+        Assert.Equal(Level.Intermediate, skill.Level);
     }
 
     [Fact]

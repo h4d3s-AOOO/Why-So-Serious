@@ -1,0 +1,66 @@
+name: Build MSI
+
+# Déclenché à la main (bouton "Run workflow") ou quand on pousse un tag comme v1.0.0
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # nécessaire pour attacher le .msi à une Release
+
+jobs:
+  build-msi:
+    runs-on: windows-latest
+
+    steps:
+      # 1. Récupère le code du repo
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Installe le SDK .NET 10
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 3. Publie le client et le serveur (le .NET est inclus : --self-contained)
+      - name: Publish client
+        run: dotnet publish src/SeriousGame.Client -c Release -r win-x64 --self-contained true -o publish/client
+
+      - name: Publish server
+        run: dotnet publish src/SeriousGame.Server -c Release -r win-x64 --self-contained true -o publish/server
+
+      # 4. Calcule le numéro de version : "v1.2.3" -> "1.2.3", sinon "1.0.0"
+      - name: Compute version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $v = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $v = '1.0.0'
+          }
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      # 5. Installe WiX puis construit le .msi
+      - name: Install WiX
+        run: dotnet tool install --global wix
+
+      - name: Build MSI
+        run: wix build installer/Package.wxs -arch x64 -d Version=${{ steps.version.outputs.value }} -o WhySoSerious.msi
+
+      # 6. Le .msi est téléchargeable depuis l'onglet Actions
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhySoSerious-msi
+          path: WhySoSerious.msi
+
+      # 7. Si c'est un tag, publie aussi le .msi dans une Release GitHub
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: WhySoSerious.msi

@@ -1,0 +1,27 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- $(Version) est donné par la ligne de commande : wix build -d Version=1.0.0 -->
+  <Package Name="Why So Serious"
+           Manufacturer="Why So Serious Team"
+           Version="$(Version)"
+           UpgradeCode="6F2C1B1E-3A54-4D0B-9E43-2B7A5C1D8E11">
+
+    <!-- Met tous les fichiers dans le .msi lui-même -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Si une ancienne version est installée, la nouvelle la remplace -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+
+    <!-- C:\Program Files\WhySoSerious\Client et ...\Server -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="WhySoSerious">
+        <Directory Id="CLIENTDIR" Name="Client">
+          <Files Include="..\publish\client\**" />
+        </Directory>
+        <Directory Id="SERVERDIR" Name="Server">
+          <Files Include="..\publish\server\**" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+  </Package>
+</Wix>

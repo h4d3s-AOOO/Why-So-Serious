@@ -52,7 +52,6 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
         };
 
         currentRound.Applications.Add(application);
-        await Clients.Caller.WaitingForOtherPlayers();
     }
 
     public async Task EnrollConsultantAsync(EnrollTrainingCommand command)
@@ -92,8 +91,27 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
         var currentRound = game.Rounds.LastOrDefault();
         if (currentRound is null || currentRound.IsCompleted) return;
 
-        // Arbitrage du tour en cours
-        _turnService.ResolveRound(currentRound);
+        // US-07 : on refuse une entreprise qui n'appartient pas à cette partie
+        var company = game.Companies.FirstOrDefault(c => c.Id == command.CompanyId);
+        if (company is null) return;
+
+        // US-07 : on note que ce joueur a terminé son tour ; on ne résout
+        // le tour que lorsque TOUTES les entreprises ont validé.
+        bool roundResolvedNow;
+        lock (currentRound)
+        {
+            currentRound.MarkCompanyReady(company.Id);
+            roundResolvedNow = currentRound.AllCompaniesReady && !currentRound.IsCompleted;
+
+            if (roundResolvedNow)
+                _turnService.ResolveRound(currentRound);   // passe IsCompleted à true
+        }
+
+        if (!roundResolvedNow)
+        {
+            await Clients.Caller.WaitingForOtherPlayers();
+            return;
+        }
 
         // Clôture définitive si le nombre max de rounds est atteint
         if (currentRound.Order >= game.RoundsNumber)
@@ -108,11 +126,11 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
             return;
         }
 
-        // Notification du résultat à chaque entreprise du groupe
-        foreach (var company in game.Companies)
+        // US-07 : chaque joueur reçoit SON résultat, et pas celui des autres
+        foreach (var gameCompany in game.Companies)
         {
-            var catalogDto = Mapper.ToDto(currentRound, company, game.RoundsNumber);
-            await Clients.Group(game.Id).RoundResolved(catalogDto);
+            var catalogDto = Mapper.ToDto(currentRound, gameCompany, game.RoundsNumber);
+            await Clients.Group(gameCompany.PlayerOwner.Id).RoundResolved(catalogDto);
         }
     }
 
@@ -125,6 +143,9 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
         if (!string.IsNullOrEmpty(gameId) && !string.IsNullOrEmpty(playerId))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
+
+            // US-07 : un groupe par joueur, pour pouvoir lui écrire individuellement
+            await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
 
             var game = _gameService.GetGame(gameId);
             var company = game?.Companies.FirstOrDefault(c => c.PlayerOwner.Id == playerId);

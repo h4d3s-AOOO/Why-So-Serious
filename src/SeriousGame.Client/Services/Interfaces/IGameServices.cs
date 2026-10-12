@@ -16,4 +16,10 @@ public interface IGameServices
     /// Retourne null si le serveur l'a acceptée, sinon le message d'erreur à afficher.
     /// </summary>
     Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command);
+
+    /// <summary>
+    /// Valide le tour du joueur, puis attend que le serveur ait résolu le tour
+    /// (c'est-à-dire que tous les joueurs aient validé).
+    /// </summary>
+    Task EndTurnAsync(string companyId);
 }

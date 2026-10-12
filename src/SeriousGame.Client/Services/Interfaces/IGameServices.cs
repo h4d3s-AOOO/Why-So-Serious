@@ -22,4 +22,10 @@ public interface IGameServices
     /// Retourne null si l'envoi s'est bien passé, sinon le message d'erreur à afficher.
     /// </summary>
     Task<string?> EnrollConsultantAsync(EnrollTrainingCommand command);
+
+    /// <summary>
+    /// Valide le tour du joueur, puis attend que le serveur ait résolu le tour
+    /// (c'est-à-dire que tous les joueurs aient validé).
+    /// </summary>
+    Task EndTurnAsync(string companyId);
 }

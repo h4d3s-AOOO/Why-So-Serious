@@ -54,16 +54,38 @@ public class GameLoop
 
     private async Task RunPhaseAsync(TurnPhase phase, int round)
     {
-        // On ne joue une phase que si le serveur nous a envoyé le catalogue de CE tour-ci
-        var handled = _session.CurrentRound is { } catalog
-                      && catalog.RoundNumber == round
-                      && await TryRunGamePhaseAsync(phase, catalog);
+        // On ne joue une phase que si le serveur nous a envoyé le catalogue de CE tour-ci.
+        // Au début du tour (MarketAnalysis), le catalogue peut arriver quelques instants après
+        // la connexion : on l'attend un peu au lieu de passer tout de suite au placeholder.
+        var catalog = await GetCatalogAsync(round, wait: phase == TurnPhase.MarketAnalysis);
+        var handled = catalog is not null && await TryRunGamePhaseAsync(phase, catalog);
 
         if (!handled)
             ConsoleUI.WriteInfo(PlaceholderFor(phase));
 
         ConsoleUI.WritePrompt(ClientResources.PressEnterToContinuePrompt);
         Console.ReadLine();
+    }
+
+    /// <summary>
+    /// Retourne le catalogue du tour demandé, ou null s'il n'est pas arrivé.
+    /// Si wait est vrai, on réessaie toutes les 100 ms pendant 5 secondes maximum.
+    /// </summary>
+    private async Task<RoundCatalogDto?> GetCatalogAsync(int round, bool wait)
+    {
+        var maxTries = wait ? 50 : 1;
+
+        for (var i = 0; i < maxTries; i++)
+        {
+            var catalog = _session.CurrentRound;
+            if (catalog is not null && catalog.RoundNumber == round)
+                return catalog;
+
+            if (i < maxTries - 1)
+                await Task.Delay(100);
+        }
+
+        return null;
     }
 
     /// <summary>Exécute une phase déjà implémentée ; false si elle reste un placeholder.</summary>
@@ -93,6 +115,13 @@ public class GameLoop
                 if (_chosenTraining is not null)
                     await SubmitTrainingAsync(catalog.PlayerCompany.Id);
 
+                return true;
+
+            // US-07 : valider son tour et attendre que tous les joueurs aient validé
+            case TurnPhase.Resolution:
+                ConsoleUI.WriteInfo("Round completed! Waiting for the other players...");
+                await _gameServices.EndTurnAsync(catalog.PlayerCompany.Id);
+                ConsoleUI.WriteInfo("✅ All players are done. Round is over");
                 return true;
 
             default:

@@ -1,8 +1,7 @@
-// Transport hub du hub /game : connexion et envoi des candidatures à un appel d'offres. Reflète
-// GameHub côté serveur (SubmitApplicationAsync y est déjà implémenté).
 using Client.Options;
 using Client.Services.Interfaces;
 using Client.State;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,6 +12,10 @@ using Shared.Models.Requests;
 
 namespace Client.Services;
 
+/// <summary>
+/// Connexion du client au hub /game : réception du catalogue du tour (RoundStarted)
+/// et envoi des actions du joueur (candidature à un appel d'offre).
+/// </summary>
 public class GameServices : IGameServices
 {
     private readonly ILogger<GameServices> _logger;
@@ -53,14 +56,54 @@ public class GameServices : IGameServices
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Échec de connexion au hub /game");
+            _logger.LogWarning(ex, "Failed to connect to the /game hub");
             return false;
         }
     }
 
-    public async Task SubmitApplicationAsync(ApplyToTenderCommand command)
+    public async Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command)
     {
-        if (_gameConnection is null) return;
-        await _gameConnection.InvokeAsync(nameof(IGameHubServer.SubmitApplicationAsync), command);
+        if (_gameConnection is null)
+            return "You are not connected to the game.";
+
+        try
+        {
+            await _gameConnection.InvokeAsync(nameof(IGameHubServer.SubmitApplicationAsync), command);
+            return null;
+        }
+        catch (HubException ex)
+        {
+            // Erreur métier renvoyée par le serveur (ex : prix invalide)
+            return ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send the application");
+            return "Unable to send the application to the server.";
+        }
+    }
+
+    public async Task<string?> EnrollConsultantAsync(EnrollTrainingCommand command)
+    {
+        // Même principe que SubmitApplicationAsync : on renvoie null si tout s'est bien passé,
+        // sinon un message d'erreur que GameLoop affichera au joueur.
+        if (_gameConnection is null)
+            return "You are not connected to the game.";
+
+        try
+        {
+            await _gameConnection.InvokeAsync(nameof(IGameHubServer.EnrollConsultantAsync), command);
+            return null;
+        }
+        catch (HubException ex)
+        {
+            // Erreur renvoyée volontairement par le serveur
+            return ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send the training enrollment");
+            return "Unable to send the training enrollment to the server.";
+        }
     }
 }

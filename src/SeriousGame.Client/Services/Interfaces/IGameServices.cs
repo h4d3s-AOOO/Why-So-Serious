@@ -10,5 +10,16 @@ public interface IGameServices
     event Action? WaitingForOtherPlayers;
 
     Task<bool> ConnectAsync(string gameId);
-    Task SubmitApplicationAsync(ApplyToTenderCommand command);
+
+    /// <summary>
+    /// Envoie une candidature (appel d'offre, consultants affectés, prix).
+    /// Retourne null si le serveur l'a acceptée, sinon le message d'erreur à afficher.
+    /// </summary>
+    Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command);
+
+    /// <summary>
+    /// Inscrit un consultant à une formation.
+    /// Retourne null si l'envoi s'est bien passé, sinon le message d'erreur à afficher.
+    /// </summary>
+    Task<string?> EnrollConsultantAsync(EnrollTrainingCommand command);
 }

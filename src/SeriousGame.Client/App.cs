@@ -55,18 +55,16 @@ public class App
             ConsoleUI.WriteInfo(string.Format(ClientResources.GameStartingMessage, game.Name));
         };
 
-        _gameServices.RoundStarted += async catalog =>
+        _gameServices.RoundStarted += catalog =>
         {
-            ConsoleUI.DisplayCompanyDashboard(catalog.PlayerCompany, catalog.RoundNumber, catalog.TotalRounds);
-            ConsoleUI.DisplayTenders(catalog.AvailableTenders);
-            ConsoleUI.DisplayTrainings(catalog.AvailableTrainings);
-
-            await ApplyToTenderFlowAsync(catalog);
+            // Thread SignalR : on mémorise seulement. L'affichage et la saisie
+            // se font dans GameLoop, sur le thread principal.
+            _session.StartRound(catalog);
         };
 
         _gameServices.WaitingForOtherPlayers += () =>
         {
-            ConsoleUI.WriteInfo("En attente des autres joueurs...");
+            ConsoleUI.WriteInfo("Waiting for the other players...");
         };
 
         _lobbyServices.NotificationReceived += msg =>
@@ -220,12 +218,12 @@ public class App
                 else
                 {
                     await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
-                    await new GameLoop(_session).RunAsync();
+                    await new GameLoop(_session, _gameServices).RunAsync();
                 }
                 break;
             case EnrollmentResult.GameStarting:
                 await _gameServices.ConnectAsync(_session.CurrentGame!.Id);
-                await new GameLoop(_session).RunAsync();
+                await new GameLoop(_session, _gameServices).RunAsync();
                 break;
         }
     }
@@ -257,7 +255,7 @@ public class App
     {
         if (catalog.AvailableTenders.Count == 0) return;
 
-        ConsoleUI.WritePrompt("\nNuméro de l'appel d'offres auquel postuler (0 pour passer) : ");
+        ConsoleUI.WritePrompt("\nNumber of the tender to apply to (0 to skip): ");
         if (!int.TryParse(Console.ReadLine(), out var tenderIndex) || tenderIndex <= 0 || tenderIndex > catalog.AvailableTenders.Count)
             return;
 
@@ -266,7 +264,7 @@ public class App
 
         if (staff.Count == 0)
         {
-            ConsoleUI.WriteError("Aucun consultant disponible pour cette candidature.");
+            ConsoleUI.WriteError("No consultant available for this application.");
             return;
         }
 
@@ -274,7 +272,7 @@ public class App
         for (var i = 0; i < staff.Count; i++)
             Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
 
-        ConsoleUI.WritePrompt("Numéros des consultants à affecter (séparés par des virgules, ex. 1,2) : ");
+        ConsoleUI.WritePrompt("Numbers of the consultants to assign (comma-separated, e.g. 1,2): ");
         var input = Console.ReadLine() ?? string.Empty;
         var selectedIds = new List<string>();
 
@@ -294,7 +292,7 @@ public class App
             ConsultantIds = selectedIds
         });
 
-        ConsoleUI.WriteInfo($"Candidature envoyée pour « {selectedTender.Name} ».");
+        ConsoleUI.WriteInfo($"Application sent for \"{selectedTender.Name}\".");
     }
 
     private async Task<bool> WaitForGameStartWithEscapeAsync()

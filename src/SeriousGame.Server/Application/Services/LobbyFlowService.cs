@@ -5,6 +5,7 @@ using Server.Hubs;
 using Server.Resources;
 using Shared.Abstractions;
 using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Server.Application.Services;
 

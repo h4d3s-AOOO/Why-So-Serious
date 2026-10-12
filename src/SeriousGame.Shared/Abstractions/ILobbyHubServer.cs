@@ -1,4 +1,5 @@
 using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Shared.Abstractions;
 

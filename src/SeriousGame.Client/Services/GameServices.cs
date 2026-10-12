@@ -82,4 +82,10 @@ public class GameServices : IGameServices
             return "Impossible d'envoyer la candidature au serveur.";
         }
     }
+
+    public async Task EnrollConsultantAsync(EnrollTrainingCommand command)
+    {
+        if (_gameConnection is null) return;
+        await _gameConnection.InvokeAsync(nameof(IGameHubServer.EnrollConsultantAsync), command);
+    }
 }

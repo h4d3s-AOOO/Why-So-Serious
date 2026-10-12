@@ -1,5 +1,3 @@
-// Placeholder pour la future logique client du hub /game (reflète le GameHub côté serveur,
-// lui-même non développé). Pas encore branché dans App - vide tant que les actions en jeu ne sont pas implémentées.
 using Client.Options;
 using Client.Services.Interfaces;
 using Client.State;
@@ -60,6 +58,28 @@ public class GameServices : IGameServices
         {
             _logger.LogWarning(ex, "Échec de connexion au hub /game");
             return false;
+        }
+    }
+
+    public async Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command)
+    {
+        if (_gameConnection is null)
+            return "Vous n'êtes pas connecté à la partie.";
+
+        try
+        {
+            await _gameConnection.InvokeAsync(nameof(IGameHubServer.SubmitApplicationAsync), command);
+            return null;
+        }
+        catch (HubException ex)
+        {
+            // Erreur métier renvoyée par le serveur (ex : prix invalide)
+            return ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec de l'envoi de la candidature");
+            return "Impossible d'envoyer la candidature au serveur.";
         }
     }
 }

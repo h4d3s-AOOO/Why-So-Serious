@@ -100,8 +100,19 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
         // le tour que lorsque TOUTES les entreprises ont validé.
         bool roundResolvedNow;
         lock (currentRound)
-            // Arbitrage du tour en cours
-            _turnService.ResolveRound(currentRound);
+        {
+            currentRound.MarkCompanyReady(company.Id);
+            roundResolvedNow = currentRound.AllCompaniesReady && !currentRound.IsCompleted;
+
+            if (roundResolvedNow)
+                _turnService.ResolveRound(currentRound);   // passe IsCompleted à true
+        }
+
+        if (!roundResolvedNow)
+        {
+            await Clients.Caller.WaitingForOtherPlayers();
+            return;
+        }
 
         // Clôture définitive si le nombre max de rounds est atteint
         if (currentRound.Order >= game.RoundsNumber)
@@ -116,37 +127,11 @@ public class GameHub : Hub<IGameHubClient>, IGameHubServer
             return;
         }
 
-        // US-07 : chaque joueur reçoit son résultat, et pas celui des autres
+        // US-07 : chaque joueur reçoit SON résultat, et pas celui des autres
         foreach (var gameCompany in game.Companies)
         {
-            var catalogDto = Mapper.ToDto(currentRound, company, game.RoundsNumber);
-            await Clients.Group(game.Id).RoundResolved(catalogDto);
+            var catalogDto = Mapper.ToDto(currentRound, gameCompany, game.RoundsNumber);
+            await Clients.Group(gameCompany.PlayerOwner.Id).RoundResolved(catalogDto);
         }
-    }
-
-    public override async Task OnConnectedAsync()
-    {
-        var httpContext = Context.GetHttpContext();
-        var gameId = httpContext?.Request.Query["gameId"].ToString();
-        var playerId = httpContext?.Request.Query["playerId"].ToString();
-
-        if (!string.IsNullOrEmpty(gameId) && !string.IsNullOrEmpty(playerId))
-        {
-            await Groups.AddToGroupAsync(Context.ConnectionId, gameId);
-            // US-07 : permet d'écrire individuellement au joueur 
-            await Groups.AddToGroupAsync(Context.ConnectionId, playerId);
-
-            var game = _gameService.GetGame(gameId);
-            var company = game?.Companies.FirstOrDefault(c => c.PlayerOwner.Id == playerId);
-            var round = game?.Rounds.LastOrDefault();
-
-            if (game is not null && company is not null && round is not null)
-            {
-                var catalog = Mapper.ToDto(round, company, game.RoundsNumber);
-                await Clients.Caller.RoundStarted(catalog);
-            }
-        }
-
-        await base.OnConnectedAsync();
     }
 }

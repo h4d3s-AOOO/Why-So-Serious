@@ -45,8 +45,9 @@ jobs:
           "value=$v" >> $env:GITHUB_OUTPUT
 
       # 5. Installe WiX puis construit le .msi
+      # On fixe la version 5 : WiX 7 exige d'accepter une licence payante (OSMF), pas la 5.
       - name: Install WiX
-        run: dotnet tool install --global wix
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: Build MSI
         run: wix build installer/Package.wxs -arch x64 -d Version=${{ steps.version.outputs.value }} -o WhySoSerious.msi

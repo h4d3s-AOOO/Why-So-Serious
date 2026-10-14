@@ -89,6 +89,7 @@ public class GameLoop
     }
 
     /// <summary>Exécute une phase déjà implémentée ; false si elle reste un placeholder.</summary>
+    /// <summary>Exécute une phase déjà implémentée ; false si elle reste un placeholder.</summary>
     private async Task<bool> TryRunGamePhaseAsync(TurnPhase phase, RoundCatalogDto catalog)
     {
         switch (phase)
@@ -120,6 +121,13 @@ public class GameLoop
             // US-07 : valider son tour et attendre que tous les joueurs aient validé
             case TurnPhase.Resolution:
                 ConsoleUI.WriteInfo("Round completed! Waiting for the other players...");
+                await _gameServices.EndTurnAsync(catalog.PlayerCompany.Id);
+                ConsoleUI.WriteInfo("✅ All players are done. Round is over");
+                return true;
+
+            // US-07 : valider son tour et attendre que tous les joueurs aient validé
+            case TurnPhase.Resolution:
+                ConsoleUI.WriteInfo("Round completed! ...");
                 await _gameServices.EndTurnAsync(catalog.PlayerCompany.Id);
                 ConsoleUI.WriteInfo("✅ All players are done. Round is over");
                 return true;

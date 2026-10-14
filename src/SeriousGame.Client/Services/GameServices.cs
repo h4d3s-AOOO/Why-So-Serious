@@ -13,8 +13,8 @@ using Shared.Models.Requests;
 namespace Client.Services;
 
 /// <summary>
-/// Connexion du client au hub /game : réception du catalogue du tour (RoundStarted)
-/// et envoi des actions du joueur (candidature à un appel d'offre).
+/// Connexion du client au hub /game : réception du catalogue du tour (RoundStarted),
+/// envoi des actions du joueur (candidature, fin de tour) et attente de la résolution du tour.
 /// </summary>
 public class GameServices : IGameServices
 {

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Shared;
 using Shared.Abstractions;
 using Shared.Models.Dtos;
+using Shared.Models.Requests;
 
 namespace Client.Services;
 

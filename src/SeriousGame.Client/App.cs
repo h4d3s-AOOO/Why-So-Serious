@@ -64,7 +64,7 @@ public class App
 
         _gameServices.WaitingForOtherPlayers += () =>
         {
-            ConsoleUI.WriteInfo("En attente des autres joueurs...");
+            ConsoleUI.WriteInfo("Waiting for the other players...");
         };
 
         _lobbyServices.NotificationReceived += msg =>
@@ -255,7 +255,7 @@ public class App
     {
         if (catalog.AvailableTenders.Count == 0) return;
 
-        ConsoleUI.WritePrompt("\nNuméro de l'appel d'offres auquel postuler (0 pour passer) : ");
+        ConsoleUI.WritePrompt("\nNumber of the tender to apply to (0 to skip): ");
         if (!int.TryParse(Console.ReadLine(), out var tenderIndex) || tenderIndex <= 0 || tenderIndex > catalog.AvailableTenders.Count)
             return;
 
@@ -264,7 +264,7 @@ public class App
 
         if (staff.Count == 0)
         {
-            ConsoleUI.WriteError("Aucun consultant disponible pour cette candidature.");
+            ConsoleUI.WriteError("No consultant available for this application.");
             return;
         }
 
@@ -272,7 +272,7 @@ public class App
         for (var i = 0; i < staff.Count; i++)
             Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
 
-        ConsoleUI.WritePrompt("Numéros des consultants à affecter (séparés par des virgules, ex. 1,2) : ");
+        ConsoleUI.WritePrompt("Numbers of the consultants to assign (comma-separated, e.g. 1,2): ");
         var input = Console.ReadLine() ?? string.Empty;
         var selectedIds = new List<string>();
 
@@ -292,7 +292,7 @@ public class App
             ConsultantIds = selectedIds
         });
 
-        ConsoleUI.WriteInfo($"Candidature envoyée pour « {selectedTender.Name} ».");
+        ConsoleUI.WriteInfo($"Application sent for \"{selectedTender.Name}\".");
     }
 
     private async Task<bool> WaitForGameStartWithEscapeAsync()

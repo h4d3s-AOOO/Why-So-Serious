@@ -18,6 +18,12 @@ public interface IGameServices
     Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command);
 
     /// <summary>
+    /// Inscrit un consultant à une formation.
+    /// Retourne null si l'envoi s'est bien passé, sinon le message d'erreur à afficher.
+    /// </summary>
+    Task<string?> EnrollConsultantAsync(EnrollTrainingCommand command);
+
+    /// <summary>
     /// Valide le tour du joueur, puis attend que le serveur ait résolu le tour
     /// (c'est-à-dire que tous les joueurs aient validé).
     /// </summary>

@@ -26,6 +26,10 @@ public class GameLoop
     private List<string> _chosenConsultantIds = [];
     private decimal _chosenBid;
 
+    // Choix de formation faits en phase Decision, envoyés en phase Submission
+    private TrainingDto? _chosenTraining;
+    private string? _chosenTrainingConsultantId;
+
     public GameLoop(ClientSession session, IGameServices gameServices)
     {
         _session = session;
@@ -50,16 +54,38 @@ public class GameLoop
 
     private async Task RunPhaseAsync(TurnPhase phase, int round)
     {
-        // On ne joue une phase que si le serveur nous a envoyé le catalogue de CE tour-ci
-        var handled = _session.CurrentRound is { } catalog
-                      && catalog.RoundNumber == round
-                      && await TryRunGamePhaseAsync(phase, catalog);
+        // On ne joue une phase que si le serveur nous a envoyé le catalogue de CE tour-ci.
+        // Au début du tour (MarketAnalysis), le catalogue peut arriver quelques instants après
+        // la connexion : on l'attend un peu au lieu de passer tout de suite au placeholder.
+        var catalog = await GetCatalogAsync(round, wait: phase == TurnPhase.MarketAnalysis);
+        var handled = catalog is not null && await TryRunGamePhaseAsync(phase, catalog);
 
         if (!handled)
             ConsoleUI.WriteInfo(PlaceholderFor(phase));
 
         ConsoleUI.WritePrompt(ClientResources.PressEnterToContinuePrompt);
         Console.ReadLine();
+    }
+
+    /// <summary>
+    /// Retourne le catalogue du tour demandé, ou null s'il n'est pas arrivé.
+    /// Si wait est vrai, on réessaie toutes les 100 ms pendant 5 secondes maximum.
+    /// </summary>
+    private async Task<RoundCatalogDto?> GetCatalogAsync(int round, bool wait)
+    {
+        var maxTries = wait ? 50 : 1;
+
+        for (var i = 0; i < maxTries; i++)
+        {
+            var catalog = _session.CurrentRound;
+            if (catalog is not null && catalog.RoundNumber == round)
+                return catalog;
+
+            if (i < maxTries - 1)
+                await Task.Delay(100);
+        }
+
+        return null;
     }
 
     /// <summary>Exécute une phase déjà implémentée ; false si elle reste un placeholder.</summary>
@@ -76,10 +102,27 @@ public class GameLoop
 
             case TurnPhase.Decision:
                 ChooseApplication(catalog);
+                // La formation se choisit après l'appel d'offres : on sait ainsi quels
+                // consultants sont déjà pris par la candidature de ce tour.
+                ChooseTraining(catalog);
                 return true;
 
-            case TurnPhase.Submission when _chosenTender is not null:
-                await SubmitApplicationAsync(catalog.PlayerCompany.Id);
+            // On envoie ce que le joueur a choisi : une candidature, une inscription, ou les deux.
+            // S'il n'a rien choisi, la phase reste un placeholder (return false).
+            case TurnPhase.Submission when _chosenTender is not null || _chosenTraining is not null:
+                if (_chosenTender is not null)
+                    await SubmitApplicationAsync(catalog.PlayerCompany.Id);
+
+                if (_chosenTraining is not null)
+                    await SubmitTrainingAsync(catalog.PlayerCompany.Id);
+
+                return true;
+
+            // US-07 : valider son tour et attendre que tous les joueurs aient validé
+            case TurnPhase.Resolution:
+                ConsoleUI.WriteInfo("Round completed! Waiting for the other players...");
+                await _gameServices.EndTurnAsync(catalog.PlayerCompany.Id);
+                ConsoleUI.WriteInfo("✅ All players are done. Round is over");
                 return true;
 
             // US-07 : valider son tour et attendre que tous les joueurs aient validé
@@ -99,17 +142,20 @@ public class GameLoop
     private void ChooseApplication(RoundCatalogDto catalog)
     {
         _chosenTender = null;
+        // Aussi remis à zéro : sinon, si le joueur ne candidate pas ce tour-ci, les consultants
+        // du tour précédent resteraient exclus du choix de formation.
+        _chosenConsultantIds = [];
         var tenders = catalog.AvailableTenders;
         var staff = catalog.PlayerCompany.Staff;
 
         if (tenders.Count == 0)
         {
-            ConsoleUI.WriteInfo("Aucun appel d'offres ce tour-ci.");
+            ConsoleUI.WriteInfo("No tender this round.");
             return;
         }
         if (staff.Count == 0)
         {
-            ConsoleUI.WriteError("Aucun consultant dans votre entreprise : candidature impossible ce tour-ci.");
+            ConsoleUI.WriteError("No consultant in your company: you cannot apply this round.");
             return;
         }
 
@@ -117,7 +163,7 @@ public class GameLoop
         var tenderIndex = AskTenderIndex(tenders.Count);
         if (tenderIndex < 0)
         {
-            ConsoleUI.WriteInfo("Vous ne candidatez pas ce tour-ci.");
+            ConsoleUI.WriteInfo("You are not applying this round.");
             return;
         }
 
@@ -126,7 +172,7 @@ public class GameLoop
         _chosenBid = AskBid(tender);
         _chosenTender = tender;
 
-        ConsoleUI.WriteInfo($"Votre choix : {tender.Name}, {_chosenConsultantIds.Count} consultant(s), {_chosenBid:N0} €");
+        ConsoleUI.WriteInfo($"Your choice: {tender.Name}, {_chosenConsultantIds.Count} consultant(s), {_chosenBid:N0} €");
     }
 
     /// <summary>Retourne l'index choisi, ou -1 si le joueur passe son tour (0).</summary>
@@ -134,22 +180,22 @@ public class GameLoop
     {
         while (true)
         {
-            ConsoleUI.WritePrompt($"Numéro de l'appel d'offres (1-{count}, 0 pour passer) :");
+            ConsoleUI.WritePrompt($"Tender number (1-{count}, 0 to skip):");
             if (int.TryParse(Console.ReadLine(), out var number) && number >= 0 && number <= count)
                 return number - 1;
-            ConsoleUI.WriteError("Numéro invalide.");
+            ConsoleUI.WriteError("Invalid number.");
         }
     }
 
     private static List<string> AskConsultants(IReadOnlyList<ConsultantDto> staff)
     {
-        ConsoleUI.WriteInfo("\nConsultants du staff :");
+        ConsoleUI.WriteInfo("\nStaff consultants:");
         for (var i = 0; i < staff.Count; i++)
             Console.WriteLine($"[{i + 1}] {staff[i].FullName}");
 
         while (true)
         {
-            ConsoleUI.WritePrompt("Numéros des consultants à affecter (séparés par des virgules, ex. 1,2) :");
+            ConsoleUI.WritePrompt("Numbers of the consultants to assign (comma-separated, e.g. 1,2):");
             var ids = (Console.ReadLine() ?? string.Empty)
                 .Split(',')
                 .Select(entry => int.TryParse(entry.Trim(), out var n) ? n : 0)
@@ -159,7 +205,7 @@ public class GameLoop
                 .ToList();
 
             if (ids.Count > 0) return ids;
-            ConsoleUI.WriteError("Choisissez au moins un consultant.");
+            ConsoleUI.WriteError("Choose at least one consultant.");
         }
     }
 
@@ -167,10 +213,96 @@ public class GameLoop
     {
         while (true)
         {
-            ConsoleUI.WritePrompt($"Votre prix en € pour « {tender.Name} » :");
+            ConsoleUI.WritePrompt($"Your price in € for \"{tender.Name}\":");
             if (TryParseAmount(Console.ReadLine(), out var bid))
                 return bid;
-            ConsoleUI.WriteError("Montant non reconnu, tapez un nombre (ex : 120000).");
+            ConsoleUI.WriteError("Amount not recognized, type a number (e.g. 120000).");
+        }
+    }
+
+    // --- Phase Decision (suite) : formation et consultant à former ---
+
+    private void ChooseTraining(RoundCatalogDto catalog)
+    {
+        // On repart de zéro à chaque tour : le choix du tour précédent ne doit pas être renvoyé
+        _chosenTraining = null;
+        _chosenTrainingConsultantId = null;
+
+        var trainings = catalog.AvailableTrainings;
+
+        if (trainings.Count == 0)
+        {
+            ConsoleUI.WriteInfo("No training available this round.");
+            return;
+        }
+
+        // Un consultant déjà affecté à l'appel d'offres de ce tour ne peut pas partir en formation.
+        // On garde donc uniquement ceux qui ne sont pas dans la liste des consultants choisis.
+        var freeConsultants = catalog.PlayerCompany.Staff
+            .Where(consultant => !_chosenConsultantIds.Contains(consultant.Id))
+            .ToList();
+
+        if (freeConsultants.Count == 0)
+        {
+            ConsoleUI.WriteInfo("No consultant left to send on a training this round.");
+            return;
+        }
+
+        ConsoleUI.DisplayTrainings(trainings);
+        var trainingIndex = AskTrainingIndex(trainings.Count);
+        if (trainingIndex < 0)
+        {
+            ConsoleUI.WriteInfo("You do not enroll anyone in a training this round.");
+            return;
+        }
+
+        var training = trainings[trainingIndex];
+
+        // La formation se paie tout de suite : on vérifie que la trésorerie suffit
+        if (catalog.PlayerCompany.Treasury < training.Cost)
+        {
+            ConsoleUI.WriteError($"Not enough treasury for \"{training.Name}\" (cost: {training.Cost:N0} €).");
+            return;
+        }
+
+        var consultantIndex = AskConsultantForTraining(freeConsultants);
+        if (consultantIndex < 0)
+        {
+            ConsoleUI.WriteInfo("You do not enroll anyone in a training this round.");
+            return;
+        }
+
+        _chosenTraining = training;
+        _chosenTrainingConsultantId = freeConsultants[consultantIndex].Id;
+
+        ConsoleUI.WriteInfo($"Your choice: {freeConsultants[consultantIndex].FullName} follows \"{training.Name}\" ({training.Cost:N0} €)");
+    }
+
+    /// <summary>Retourne l'index de la formation choisie, ou -1 si le joueur passe (0).</summary>
+    private static int AskTrainingIndex(int count)
+    {
+        while (true)
+        {
+            ConsoleUI.WritePrompt($"Training number (1-{count}, 0 to skip):");
+            if (int.TryParse(Console.ReadLine(), out var number) && number >= 0 && number <= count)
+                return number - 1;
+            ConsoleUI.WriteError("Invalid number.");
+        }
+    }
+
+    /// <summary>Retourne l'index du consultant choisi dans la liste donnée, ou -1 si le joueur renonce (0).</summary>
+    private static int AskConsultantForTraining(IReadOnlyList<ConsultantDto> consultants)
+    {
+        ConsoleUI.WriteInfo("\nConsultants available for a training:");
+        for (var i = 0; i < consultants.Count; i++)
+            Console.WriteLine($"[{i + 1}] {consultants[i].FullName}");
+
+        while (true)
+        {
+            ConsoleUI.WritePrompt($"Consultant to enroll (1-{consultants.Count}, 0 to cancel):");
+            if (int.TryParse(Console.ReadLine(), out var number) && number >= 0 && number <= consultants.Count)
+                return number - 1;
+            ConsoleUI.WriteError("Invalid number.");
         }
     }
 
@@ -192,22 +324,40 @@ public class GameLoop
             var error = await _gameServices.SubmitApplicationAsync(command);
             if (error is null)
             {
-                ConsoleUI.WriteInfo($"✅ Candidature envoyée : {_chosenTender.Name} pour {_chosenBid:N0} €");
+                ConsoleUI.WriteInfo($"✅ Application sent: {_chosenTender.Name} for {_chosenBid:N0} €");
                 return;
             }
 
             // Refus du serveur (ex : prix invalide) : le joueur corrige ou renonce
             ConsoleUI.WriteError(error);
-            ConsoleUI.WritePrompt("Nouveau prix, ou Entrée pour ne pas candidater ce tour-ci :");
+            ConsoleUI.WritePrompt("New price, or Enter to not apply this round:");
             var input = Console.ReadLine();
             if (string.IsNullOrWhiteSpace(input))
             {
-                ConsoleUI.WriteInfo("Pas de candidature ce tour-ci.");
+                ConsoleUI.WriteInfo("No application this round.");
                 return;
             }
             if (TryParseAmount(input, out var newBid))
                 _chosenBid = newBid;
         }
+    }
+
+    private async Task SubmitTrainingAsync(string companyId)
+    {
+        var command = new EnrollTrainingCommand
+        {
+            GameId = _session.CurrentGame!.Id,
+            CompanyId = companyId,
+            TrainingId = _chosenTraining!.Id,
+            ConsultantId = _chosenTrainingConsultantId!
+        };
+
+        // null = le serveur a accepté ; sinon on affiche le message d'erreur
+        var error = await _gameServices.EnrollConsultantAsync(command);
+        if (error is null)
+            ConsoleUI.WriteInfo($"✅ Training enrollment sent: {_chosenTraining.Name} ({_chosenTraining.Cost:N0} €)");
+        else
+            ConsoleUI.WriteError(error);
     }
 
     private static bool TryParseAmount(string? input, out decimal amount) =>

@@ -70,7 +70,7 @@ public class GameServices : IGameServices
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Échec de connexion au hub /game");
+            _logger.LogWarning(ex, "Failed to connect to the /game hub");
             return false;
         }
     }
@@ -78,7 +78,7 @@ public class GameServices : IGameServices
     public async Task<string?> SubmitApplicationAsync(ApplyToTenderCommand command)
     {
         if (_gameConnection is null)
-            return "Vous n'êtes pas connecté à la partie.";
+            return "You are not connected to the game.";
 
         try
         {
@@ -92,8 +92,32 @@ public class GameServices : IGameServices
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Échec de l'envoi de la candidature");
-            return "Impossible d'envoyer la candidature au serveur.";
+            _logger.LogWarning(ex, "Failed to send the application");
+            return "Unable to send the application to the server.";
+        }
+    }
+
+    public async Task<string?> EnrollConsultantAsync(EnrollTrainingCommand command)
+    {
+        // Même principe que SubmitApplicationAsync : on renvoie null si tout s'est bien passé,
+        // sinon un message d'erreur que GameLoop affichera au joueur.
+        if (_gameConnection is null)
+            return "You are not connected to the game.";
+
+        try
+        {
+            await _gameConnection.InvokeAsync(nameof(IGameHubServer.EnrollConsultantAsync), command);
+            return null;
+        }
+        catch (HubException ex)
+        {
+            // Erreur renvoyée volontairement par le serveur
+            return ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send the training enrollment");
+            return "Unable to send the training enrollment to the server.";
         }
     }
 
@@ -117,7 +141,7 @@ public class GameServices : IGameServices
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Échec de la validation du tour");
+            _logger.LogWarning(ex, "Failed to end the turn");
             return;   // on n'attend pas une résolution qui ne viendra jamais
         }
 

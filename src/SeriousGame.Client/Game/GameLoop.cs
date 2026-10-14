@@ -125,13 +125,6 @@ public class GameLoop
                 ConsoleUI.WriteInfo("✅ All players are done. Round is over");
                 return true;
 
-            // US-07 : valider son tour et attendre que tous les joueurs aient validé
-            case TurnPhase.Resolution:
-                ConsoleUI.WriteInfo("Round completed! ...");
-                await _gameServices.EndTurnAsync(catalog.PlayerCompany.Id);
-                ConsoleUI.WriteInfo("✅ All players are done. Round is over");
-                return true;
-
             default:
                 return false;
         }
